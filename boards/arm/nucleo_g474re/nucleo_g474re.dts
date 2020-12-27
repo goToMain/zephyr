@@ -18,6 +18,7 @@
 		zephyr,shell-uart = &lpuart1;
 		zephyr,sram = &sram0;
 		zephyr,flash = &flash0;
+		zephyr,osdp-uart = &usart1;
 	};
 
 	leds {
