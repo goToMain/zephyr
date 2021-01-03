@@ -54,6 +54,45 @@ LOG_MODULE_DECLARE(osdp, CONFIG_OSDP_LOG_LEVEL);
 #define OSDP_CP_ERR_CAN_YIELD          3
 #define OSDP_CP_ERR_INPROG             4
 
+static struct osdp_cmd *cp_cmd_alloc(struct osdp_pd *pd)
+{
+	struct osdp_cmd *cmd = NULL;
+
+	if (k_mem_slab_alloc(&pd->cmd.slab, (void **)&cmd, K_MSEC(100))) {
+		LOG_ERR("Memory allocation time-out");
+		return NULL;
+	}
+	return cmd;
+}
+
+static void cp_cmd_free(struct osdp_pd *pd, struct osdp_cmd *cmd)
+{
+	k_mem_slab_free(&pd->cmd.slab, (void **)&cmd);
+}
+
+static void cp_cmd_enqueue(struct osdp_pd *pd, struct osdp_cmd *cmd)
+{
+	sys_slist_append(&pd->cmd.queue, &cmd->node);
+}
+
+static int cp_cmd_dequeue(struct osdp_pd *pd, struct osdp_cmd **cmd)
+{
+	sys_snode_t *node;
+
+	node = sys_slist_peek_head(&pd->cmd.queue);
+	if (node == NULL) {
+		return -1;
+	}
+	sys_slist_remove(&pd->cmd.queue, NULL, node);
+	*cmd = CONTAINER_OF(node, struct osdp_cmd, node);
+	return 0;
+}
+
+static struct osdp_cmd *cp_cmd_get_last(struct osdp_pd *pd)
+{
+	return (struct osdp_cmd *)sys_slist_peek_tail(&pd->cmd.queue);
+}
+
 int osdp_extract_address(int *address)
 {
 	int pd_offset = 0;
@@ -613,8 +652,8 @@ static void cp_flush_command_queue(struct osdp_pd *pd)
 {
 	struct osdp_cmd *cmd;
 
-	while (osdp_cmd_dequeue(pd, &cmd) == 0) {
-		osdp_cmd_free(pd, cmd);
+	while (cp_cmd_dequeue(pd, &cmd) == 0) {
+		cp_cmd_free(pd, cmd);
 	}
 }
 
@@ -658,13 +697,13 @@ static int cp_phy_state_update(struct osdp_pd *pd)
 		ret = OSDP_CP_ERR_GENERIC;
 		break;
 	case OSDP_CP_PHY_STATE_IDLE:
-		if (osdp_cmd_dequeue(pd, &cmd)) {
+		if (cp_cmd_dequeue(pd, &cmd)) {
 			ret = 0;
 			break;
 		}
 		pd->cmd_id = cmd->id;
 		memcpy(pd->cmd_data, cmd, sizeof(struct osdp_cmd));
-		osdp_cmd_free(pd, cmd);
+		cp_cmd_free(pd, cmd);
 		cp_reset_channel(pd);
 		/* fall-thru */
 	case OSDP_CP_PHY_STATE_SEND_CMD:
@@ -701,7 +740,7 @@ static int cp_phy_state_update(struct osdp_pd *pd)
 		}
 		break;
 	case OSDP_CP_PHY_STATE_WAIT:
-		if (osdp_millis_since(pd->phy_tstamp) < OSDP_CMD_RETRY_WAIT_MS) {
+		if (osdp_millis_since(pd->phy_tstamp) < cp_cmd_RETRY_WAIT_MS) {
 			break;
 		}
 		pd->phy_state = OSDP_CP_PHY_STATE_IDLE;
@@ -736,13 +775,13 @@ static int cp_cmd_dispatcher(struct osdp_pd *pd, int cmd)
 		return OSDP_CP_ERR_NONE; /* nothing to be done here */
 	}
 
-	c = osdp_cmd_alloc(pd);
+	c = cp_cmd_alloc(pd);
 	if (c == NULL) {
 		return OSDP_CP_ERR_GENERIC;
 	}
 
 	c->id = cmd;
-	osdp_cmd_enqueue(pd, c);
+	cp_cmd_enqueue(pd, c);
 	SET_FLAG(pd, PD_FLAG_AWAIT_RESP);
 	return OSDP_CP_ERR_INPROG;
 }
@@ -913,13 +952,13 @@ static int osdp_cp_send_command_keyset(struct osdp_cmd_keyset *cmd)
 
 	for (i = 0; i < NUM_PD(ctx); i++) {
 		pd = TO_PD(ctx, i);
-		p = osdp_cmd_alloc(pd);
+		p = cp_cmd_alloc(pd);
 		if (p == NULL) {
 			return -1;
 		}
 		p->id = CMD_KEYSET;
 		memcpy(&p->keyset, &cmd, sizeof(struct osdp_cmd_keyset));
-		osdp_cmd_enqueue(pd, p);
+		cp_cmd_enqueue(pd, p);
 	}
 
 	return 0;
@@ -1012,12 +1051,12 @@ int osdp_cp_send_command(int pd, struct osdp_cmd *cmd)
 		return -1;
 	}
 
-	p = osdp_cmd_alloc(TO_PD(ctx, pd));
+	p = cp_cmd_alloc(TO_PD(ctx, pd));
 	if (p == NULL) {
 		return -1;
 	}
 	memcpy(p, cmd, sizeof(struct osdp_cmd));
 	p->id = cmd_id; /* translate to internal */
-	osdp_cmd_enqueue(TO_PD(ctx, pd), p);
+	cp_cmd_enqueue(TO_PD(ctx, pd), p);
 	return 0;
 }

@@ -482,11 +482,6 @@ int64_t osdp_millis_now(void);
 int64_t osdp_millis_since(int64_t last);
 void osdp_dump(const char *head, uint8_t *buf, int len);
 uint16_t osdp_compute_crc16(const uint8_t *buf, size_t len);
-struct osdp_cmd *osdp_cmd_alloc(struct osdp_pd *pd);
-void osdp_cmd_free(struct osdp_pd *pd, struct osdp_cmd *cmd);
-void osdp_cmd_enqueue(struct osdp_pd *pd, struct osdp_cmd *cmd);
-int osdp_cmd_dequeue(struct osdp_pd *pd, struct osdp_cmd **cmd);
-struct osdp_cmd *osdp_cmd_get_last(struct osdp_pd *pd);
 
 /* from osdp.c */
 struct osdp *osdp_get_ctx();
