@@ -59,6 +59,40 @@ enum osdp_cp_error_e {
 };
 
 
+static struct osdp_cmd *cp_cmd_alloc(struct osdp_pd *pd)
+{
+	struct osdp_cmd *cmd = NULL;
+
+	if (k_mem_slab_alloc(&pd->cmd.slab, (void **)&cmd, K_MSEC(100))) {
+		LOG_ERR("Memory allocation time-out");
+		return NULL;
+	}
+	return cmd;
+}
+
+static void cp_cmd_free(struct osdp_pd *pd, struct osdp_cmd *cmd)
+{
+	k_mem_slab_free(&pd->cmd.slab, (void **)&cmd);
+}
+
+static void cp_cmd_enqueue(struct osdp_pd *pd, struct osdp_cmd *cmd)
+{
+	sys_slist_append(&pd->cmd.queue, &cmd->node);
+}
+
+static int cp_cmd_dequeue(struct osdp_pd *pd, struct osdp_cmd **cmd)
+{
+	sys_snode_t *node;
+
+	node = sys_slist_peek_head(&pd->cmd.queue);
+	if (node == NULL) {
+		return -1;
+	}
+	sys_slist_remove(&pd->cmd.queue, NULL, node);
+	*cmd = CONTAINER_OF(node, struct osdp_cmd, node);
+	return 0;
+}
+
 int osdp_extract_address(int *address)
 {
 	int pd_offset = 0;
@@ -95,47 +129,59 @@ static int cp_build_command(struct osdp_pd *pd, uint8_t *buf, int max_len)
 		return OSDP_CP_ERR_GENERIC;
 	}
 
+	#define ASSERT_BUF_LEN(need)                                         \
+		if (max_len < need) {                                        \
+			LOG_ERR("OOM at build CMD(%02x) - have:%d, need:%d", \
+				pd->cmd_id, max_len, need);                  \
+			return OSDP_CP_ERR_GENERIC;                          \
+		}
+
 	switch (pd->cmd_id) {
 	case CMD_POLL:
-		__fallthrough;
+		ASSERT_BUF_LEN(CMD_POLL_LEN);
+		buf[len++] = pd->cmd_id;
+		ret = 0;
+		break;
 	case CMD_LSTAT:
-		__fallthrough;
+		ASSERT_BUF_LEN(CMD_LSTAT_LEN);
+		buf[len++] = pd->cmd_id;
+		ret = 0;
+		break;
 	case CMD_ISTAT:
-		__fallthrough;
+		ASSERT_BUF_LEN(CMD_ISTAT_LEN);
+		buf[len++] = pd->cmd_id;
+		ret = 0;
+		break;
 	case CMD_OSTAT:
-		__fallthrough;
+		ASSERT_BUF_LEN(CMD_OSTAT_LEN);
+		buf[len++] = pd->cmd_id;
+		ret = 0;
+		break;
 	case CMD_RSTAT:
+		ASSERT_BUF_LEN(CMD_RSTAT_LEN);
 		buf[len++] = pd->cmd_id;
 		ret = 0;
 		break;
 	case CMD_ID:
-		if (max_len < CMD_ID_LEN) {
-			break;
-		}
+		ASSERT_BUF_LEN(CMD_ID_LEN);
 		buf[len++] = pd->cmd_id;
 		buf[len++] = 0x00;
 		ret = 0;
 		break;
 	case CMD_CAP:
-		if (max_len < CMD_CAP_LEN) {
-			break;
-		}
+		ASSERT_BUF_LEN(CMD_CAP_LEN);
 		buf[len++] = pd->cmd_id;
 		buf[len++] = 0x00;
 		ret = 0;
 		break;
 	case CMD_DIAG:
-		if (max_len < CMD_DIAG_LEN) {
-			break;
-		}
+		ASSERT_BUF_LEN(CMD_DIAG_LEN);
 		buf[len++] = pd->cmd_id;
 		buf[len++] = 0x00;
 		ret = 0;
 		break;
 	case CMD_OUT:
-		if (max_len < CMD_OUT_LEN) {
-			break;
-		}
+		ASSERT_BUF_LEN(CMD_OUT_LEN);
 		cmd = (struct osdp_cmd *)pd->cmd_data;
 		buf[len++] = pd->cmd_id;
 		buf[len++] = cmd->output.output_no;
@@ -145,9 +191,7 @@ static int cp_build_command(struct osdp_pd *pd, uint8_t *buf, int max_len)
 		ret = 0;
 		break;
 	case CMD_LED:
-		if (max_len < CMD_LED_LEN) {
-			break;
-		}
+		ASSERT_BUF_LEN(CMD_LED_LEN);
 		cmd = (struct osdp_cmd *)pd->cmd_data;
 		buf[len++] = pd->cmd_id;
 		buf[len++] = cmd->led.reader;
@@ -169,9 +213,7 @@ static int cp_build_command(struct osdp_pd *pd, uint8_t *buf, int max_len)
 		ret = 0;
 		break;
 	case CMD_BUZ:
-		if (max_len < CMD_BUZ_LEN) {
-			break;
-		}
+		ASSERT_BUF_LEN(CMD_BUZ_LEN);
 		cmd = (struct osdp_cmd *)pd->cmd_data;
 		buf[len++] = pd->cmd_id;
 		buf[len++] = cmd->buzzer.reader;
@@ -183,9 +225,7 @@ static int cp_build_command(struct osdp_pd *pd, uint8_t *buf, int max_len)
 		break;
 	case CMD_TEXT:
 		cmd = (struct osdp_cmd *)pd->cmd_data;
-		if (max_len < (CMD_TEXT_LEN + cmd->text.length)) {
-			break;
-		}
+		ASSERT_BUF_LEN(CMD_TEXT_LEN + cmd->text.length);
 		buf[len++] = pd->cmd_id;
 		buf[len++] = cmd->text.reader;
 		buf[len++] = cmd->text.control_code;
@@ -199,9 +239,7 @@ static int cp_build_command(struct osdp_pd *pd, uint8_t *buf, int max_len)
 		ret = 0;
 		break;
 	case CMD_COMSET:
-		if (max_len < CMD_COMSET_LEN) {
-			break;
-		}
+		ASSERT_BUF_LEN(CMD_COMSET_LEN);
 		cmd = (struct osdp_cmd *)pd->cmd_data;
 		buf[len++] = pd->cmd_id;
 		buf[len++] = cmd->comset.address;
@@ -217,9 +255,7 @@ static int cp_build_command(struct osdp_pd *pd, uint8_t *buf, int max_len)
 			LOG_ERR("Cannot perform KEYSET without SC!");
 			return -1;
 		}
-		if (max_len < CMD_KEYSET_LEN) {
-			break;
-		}
+		ASSERT_BUF_LEN(CMD_KEYSET_LEN);
 		buf[len++] = pd->cmd_id;
 		buf[len++] = 1;  /* key type (1: SCBK) */
 		buf[len++] = 16; /* key length in bytes */
@@ -228,7 +264,8 @@ static int cp_build_command(struct osdp_pd *pd, uint8_t *buf, int max_len)
 		ret = 0;
 		break;
 	case CMD_CHLNG:
-		if (smb == NULL || max_len < CMD_CHLNG_LEN) {
+		ASSERT_BUF_LEN(CMD_CHLNG_LEN);
+		if (smb == NULL) {
 			break;
 		}
 		osdp_fill_random(pd->sc.cp_random, 8);
@@ -242,7 +279,8 @@ static int cp_build_command(struct osdp_pd *pd, uint8_t *buf, int max_len)
 		ret = 0;
 		break;
 	case CMD_SCRYPT:
-		if (smb == NULL || max_len < CMD_SCRYPT_LEN) {
+		ASSERT_BUF_LEN(CMD_SCRYPT_LEN);
+		if (smb == NULL) {
 			break;
 		}
 		osdp_compute_cp_cryptogram(pd);
@@ -283,8 +321,9 @@ static int cp_build_command(struct osdp_pd *pd, uint8_t *buf, int max_len)
 static int cp_decode_response(struct osdp_pd *pd, uint8_t *buf, int len)
 {
 	uint32_t temp32;
-	struct osdp_cp *cp = TO_CTX(pd)->cp;
+	struct osdp *ctx = TO_CTX(pd);
 	int i, ret = OSDP_CP_ERR_GENERIC, pos = 0, t1, t2;
+	struct osdp_event event;
 
 	if (len < 1) {
 		LOG_ERR("response must have at least one byte");
@@ -294,26 +333,27 @@ static int cp_decode_response(struct osdp_pd *pd, uint8_t *buf, int len)
 	pd->reply_id = buf[pos++];
 	len--;		/* consume reply id from the head */
 
+	#define ASSERT_LENGTH(got, exp)                                      \
+		if (got != exp) {                                            \
+			LOG_ERR("REPLY(%02x) length error! Got:%d, Exp:%d",  \
+				pd->reply_id, got, exp);                     \
+			return OSDP_CP_ERR_GENERIC;                          \
+		}
+
 	switch (pd->reply_id) {
 	case REPLY_ACK:
-		if (len != REPLY_ACK_DATA_LEN) {
-			break;
-		}
+		ASSERT_LENGTH(len, REPLY_ACK_DATA_LEN);
 		ret = OSDP_CP_ERR_NONE;
 		break;
 	case REPLY_NAK:
-		if (len != REPLY_NAK_DATA_LEN) {
-			break;
-		}
+		ASSERT_LENGTH(len, REPLY_NAK_DATA_LEN);
 		LOG_WRN("PD replied with NAK(%d) for CMD(%02x)",
 			buf[pos], pd->cmd_id);
 		ret = OSDP_CP_ERR_NONE;
 		break;
 	case REPLY_PDID:
-		if (len != REPLY_PDID_DATA_LEN) {
-			break;
-		}
-		pd->id.vendor_code  = buf[pos++];
+		ASSERT_LENGTH(len, REPLY_PDID_DATA_LEN);
+		pd->id.vendor_code = buf[pos++];
 		pd->id.vendor_code |= buf[pos++] << 8;
 		pd->id.vendor_code |= buf[pos++] << 16;
 
@@ -355,9 +395,7 @@ static int cp_decode_response(struct osdp_pd *pd, uint8_t *buf, int len)
 		ret = OSDP_CP_ERR_NONE;
 		break;
 	case REPLY_LSTATR:
-		if (len != REPLY_LSTATR_DATA_LEN) {
-			break;
-		}
+		ASSERT_LENGTH(len, REPLY_LSTATR_DATA_LEN);
 		if (buf[pos++]) {
 			SET_FLAG(pd, PD_FLAG_TAMPER);
 		} else {
@@ -371,9 +409,7 @@ static int cp_decode_response(struct osdp_pd *pd, uint8_t *buf, int len)
 		ret = OSDP_CP_ERR_NONE;
 		break;
 	case REPLY_RSTATR:
-		if (len != REPLY_RSTATR_DATA_LEN) {
-			break;
-		}
+		ASSERT_LENGTH(len, REPLY_RSTATR_DATA_LEN);
 		if (buf[pos++]) {
 			SET_FLAG(pd, PD_FLAG_R_TAMPER);
 		} else {
@@ -382,9 +418,7 @@ static int cp_decode_response(struct osdp_pd *pd, uint8_t *buf, int len)
 		ret = OSDP_CP_ERR_NONE;
 		break;
 	case REPLY_COM:
-		if (len != REPLY_COM_DATA_LEN) {
-			break;
-		}
+		ASSERT_LENGTH(len, REPLY_COM_DATA_LEN);
 		t1 = buf[pos++];
 		temp32 = buf[pos++];
 		temp32 |= buf[pos++] << 8;
@@ -396,66 +430,73 @@ static int cp_decode_response(struct osdp_pd *pd, uint8_t *buf, int len)
 		ret = OSDP_CP_ERR_NONE;
 		break;
 	case REPLY_KEYPPAD:
-		if (len < REPLY_KEYPPAD_DATA_LEN) {
+		ASSERT_LENGTH(len, REPLY_KEYPPAD_DATA_LEN);
+		if (!ctx->event_callback) {
 			break;
 		}
-		pos++; /* reader number; skip */
-		t1 = buf[pos++]; /* key length */
-		if ((len - REPLY_KEYPPAD_DATA_LEN) != t1) {
+		event.type = OSDP_EVENT_KEYPRESS;
+		event.keypress.reader_no = buf[pos++];
+		event.keypress.length = buf[pos++]; /* key length */
+		if ((len - REPLY_KEYPPAD_DATA_LEN) != event.keypress.length) {
 			break;
 		}
-		if (cp->notifier.keypress) {
-			for (i = 0; i < t1; i++) {
-				t2 = buf[pos + i]; /* key data */
-				cp->notifier.keypress(pd->offset, t2);
-			}
+		for (i = 0; i < event.keypress.length; i++) {
+			event.keypress.data[i] = buf[pos + i];
 		}
+		ctx->event_callback(ctx->event_callback_arg, pd->offset, &event);
 		ret = OSDP_CP_ERR_NONE;
 		break;
 	case REPLY_RAW:
-		if (len < REPLY_RAW_DATA_LEN) {
+		ASSERT_LENGTH(len, REPLY_RAW_DATA_LEN);
+		if (!ctx->event_callback) {
 			break;
 		}
-		pos++; /* reader number; skip */
-		t1 = buf[pos++];        /* format */
-		t2 = buf[pos++];        /* length LSB */
-		t2 |= buf[pos++] << 8; /* length MSB */
-		if ((len - REPLY_RAW_DATA_LEN) != t2) {
+		event.type = OSDP_EVENT_CARDREAD;
+		event.cardread.reader_no = buf[pos++];
+		event.cardread.format = buf[pos++];
+		event.cardread.length = buf[pos++]; /* bits LSB */
+		event.cardread.length |= buf[pos++] << 8; /* bits MSB */
+		event.cardread.direction = 0; /* un-specified */
+		t1 = (event.cardread.length + 7) / 8; /* len: bytes */
+		if (t1 != (len - REPLY_RAW_DATA_LEN)) {
 			break;
 		}
-		if (cp->notifier.cardread) {
-			cp->notifier.cardread(pd->offset, t1, buf + pos, t2);
+		for (i = 0; i < t1; i++) {
+			event.cardread.data[i] = buf[pos + i];
 		}
+		ctx->event_callback(ctx->event_callback_arg,
+				    pd->offset, &event);
 		ret = OSDP_CP_ERR_NONE;
 		break;
 	case REPLY_FMT:
-		if (len < REPLY_FMT_DATA_LEN) {
+		ASSERT_LENGTH(len, REPLY_FMT_DATA_LEN);
+		if (!ctx->event_callback) {
 			break;
 		}
-		pos++;	/* reader number; skip */
-		pos++;	/* skip one byte -- TODO: handle reader direction */
-		t1 = buf[pos++]; /* Key length */
-		if ((len - REPLY_FMT_DATA_LEN) != t1) {
+		event.type = OSDP_EVENT_CARDREAD;
+		event.cardread.reader_no = buf[pos++];
+		event.cardread.direction = buf[pos++];
+		event.cardread.length = buf[pos++];
+		event.cardread.format = OSDP_CARD_FMT_ASCII;
+		if (event.cardread.length != (len - REPLY_FMT_DATA_LEN) ||
+		    event.cardread.length > OSDP_EVENT_MAX_DATALEN) {
 			break;
 		}
-		if (cp->notifier.cardread) {
-			cp->notifier.cardread(pd->offset, OSDP_CARD_FMT_ASCII,
-					      buf + pos, t1);
+		for (i = 0; i < event.cardread.length; i++) {
+			event.cardread.data[i] = buf[pos + i];
 		}
+		ctx->event_callback(ctx->event_callback_arg,
+				    pd->offset, &event);
 		ret = OSDP_CP_ERR_NONE;
 		break;
 	case REPLY_BUSY:
 		/* PD busy; signal upper layer to retry command */
-		if (len != REPLY_BUSY_DATA_LEN) {
-			break;
-		}
+		ASSERT_LENGTH(len, REPLY_BUSY_DATA_LEN);
 		ret = OSDP_CP_ERR_RETRY_CMD;
 		break;
 #ifdef CONFIG_OSDP_SC_ENABLED
 	case REPLY_CCRYPT:
-		if (len != REPLY_CCRYPT_DATA_LEN) {
-			break;
-		}
+		ASSERT_LENGTH(len, REPLY_CCRYPT_DATA_LEN);
 		for (i = 0; i < 8; i++) {
 			pd->sc.pd_client_uid[i] = buf[pos++];
 		}
@@ -473,9 +514,7 @@ static int cp_decode_response(struct osdp_pd *pd, uint8_t *buf, int len)
 		ret = OSDP_CP_ERR_NONE;
 		break;
 	case REPLY_RMAC_I:
-		if (len != REPLY_RMAC_I_DATA_LEN) {
-			break;
-		}
+		ASSERT_LENGTH(len, REPLY_RMAC_I_DATA_LEN);
 		for (i = 0; i < 16; i++) {
 			pd->sc.r_mac[i] = buf[pos++];
 		}
@@ -584,8 +623,8 @@ static void cp_flush_command_queue(struct osdp_pd *pd)
 {
 	struct osdp_cmd *cmd;
 
-	while (osdp_cmd_dequeue(pd, &cmd) == 0) {
-		osdp_cmd_free(pd, cmd);
+	while (cp_cmd_dequeue(pd, &cmd) == 0) {
+		cp_cmd_free(pd, cmd);
 	}
 }
 
@@ -635,7 +674,7 @@ static int cp_phy_state_update(struct osdp_pd *pd)
 		}
 		pd->cmd_id = cmd->id;
 		memcpy(pd->cmd_data, cmd, sizeof(struct osdp_cmd));
-		osdp_cmd_free(pd, cmd);
+		cp_cmd_free(pd, cmd);
 		/* fall-thru */
 	case OSDP_CP_PHY_STATE_SEND_CMD:
 		if ((cp_send_command(pd)) < 0) {
@@ -700,13 +739,13 @@ static int cp_cmd_dispatcher(struct osdp_pd *pd, int cmd)
 		return OSDP_CP_ERR_NONE; /* nothing to be done here */
 	}
 
-	c = osdp_cmd_alloc(pd);
+	c = cp_cmd_alloc(pd);
 	if (c == NULL) {
 		return OSDP_CP_ERR_GENERIC;
 	}
 
 	c->id = cmd;
-	osdp_cmd_enqueue(pd, c);
+	cp_cmd_enqueue(pd, c);
 	SET_FLAG(pd, PD_FLAG_AWAIT_RESP);
 	return OSDP_CP_ERR_INPROG;
 }
@@ -878,13 +917,13 @@ static int osdp_cp_send_command_keyset(struct osdp_cmd_keyset *cmd)
 
 	for (i = 0; i < NUM_PD(ctx); i++) {
 		pd = TO_PD(ctx, i);
-		p = osdp_cmd_alloc(pd);
+		p = cp_cmd_alloc(pd);
 		if (p == NULL) {
 			return -1;
 		}
 		p->id = CMD_KEYSET;
 		memcpy(&p->keyset, &cmd, sizeof(struct osdp_cmd_keyset));
-		osdp_cmd_enqueue(pd, p);
+		cp_cmd_enqueue(pd, p);
 	}
 
 	return 0;
@@ -918,23 +957,12 @@ int osdp_setup(struct osdp *ctx, uint8_t *key)
 
 /* --- Exported Methods --- */
 
-int osdp_cp_set_callback_key_press(int (*cb)(int address, uint8_t key))
+void osdp_cp_set_event_callback(cp_event_callback_t cb, void *arg)
 {
 	struct osdp *ctx = osdp_get_ctx();
 
-	ctx->cp->notifier.keypress = cb;
-
-	return 0;
-}
-
-int osdp_cp_set_callback_card_read(
-	int (*cb)(int address, int format, uint8_t *data, int len))
-{
-	struct osdp *ctx = osdp_get_ctx();
-
-	TO_CP(ctx)->notifier.cardread = cb;
-
-	return 0;
+	ctx->event_callback = cb;
+	ctx->event_callback_arg = arg;
 }
 
 int osdp_cp_send_command(int pd, struct osdp_cmd *cmd)
@@ -977,12 +1005,12 @@ int osdp_cp_send_command(int pd, struct osdp_cmd *cmd)
 		return -1;
 	}
 
-	p = osdp_cmd_alloc(TO_PD(ctx, pd));
+	p = cp_cmd_alloc(TO_PD(ctx, pd));
 	if (p == NULL) {
 		return -1;
 	}
 	memcpy(p, cmd, sizeof(struct osdp_cmd));
 	p->id = cmd_id; /* translate to internal */
-	osdp_cmd_enqueue(TO_PD(ctx, pd), p);
+	cp_cmd_enqueue(TO_PD(ctx, pd), p);
 	return 0;
 }

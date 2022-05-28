@@ -42,7 +42,6 @@ struct osdp_device {
 };
 
 static struct osdp osdp_ctx;
-static struct osdp_cp osdp_cp_ctx;
 static struct osdp_pd osdp_pd_ctx[CONFIG_OSDP_NUM_CONNECTED_PD];
 static struct osdp_device osdp_device;
 static struct k_thread osdp_refresh_thread;
@@ -143,9 +142,7 @@ static struct osdp *osdp_build_ctx(struct osdp_channel *channel)
 	}
 #endif
 	ctx = &osdp_ctx;
-	ctx->cp = &osdp_cp_ctx;
-	ctx->cp->__parent = ctx;
-	ctx->cp->num_pd = CONFIG_OSDP_NUM_CONNECTED_PD;
+	ctx->num_pd = CONFIG_OSDP_NUM_CONNECTED_PD;
 	ctx->pd = &osdp_pd_ctx[0];
 	SET_CURRENT_PD(ctx, 0);
 
