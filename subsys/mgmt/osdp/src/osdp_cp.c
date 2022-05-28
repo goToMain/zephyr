@@ -251,7 +251,7 @@ static int cp_build_command(struct osdp_pd *pd, uint8_t *buf, int max_len)
 		break;
 #ifdef CONFIG_OSDP_SC_ENABLED
 	case CMD_KEYSET:
-		if (!ISSET_FLAG(pd, PD_FLAG_SC_ACTIVE)) {
+		if (!sc_is_active(pd)) {
 			LOG_ERR("Cannot perform KEYSET without SC!");
 			return -1;
 		}
@@ -300,7 +300,7 @@ static int cp_build_command(struct osdp_pd *pd, uint8_t *buf, int max_len)
 	}
 
 #ifdef CONFIG_OSDP_SC_ENABLED
-	if (smb && (smb[1] > SCS_14) && ISSET_FLAG(pd, PD_FLAG_SC_ACTIVE)) {
+	if (smb && (smb[1] > SCS_14) && sc_is_active(pd)) {
 		/**
 		 * When SC active and current cmd is not a handshake (<= SCS_14)
 		 * then we must set SCS type to 17 if this message has data
@@ -321,7 +321,7 @@ static int cp_build_command(struct osdp_pd *pd, uint8_t *buf, int max_len)
 static int cp_decode_response(struct osdp_pd *pd, uint8_t *buf, int len)
 {
 	uint32_t temp32;
-	struct osdp *ctx = TO_CTX(pd);
+	struct osdp *ctx = pd_to_osdp(pd);
 	int i, ret = OSDP_CP_ERR_GENERIC, pos = 0, t1, t2;
 	struct osdp_event event;
 
@@ -506,7 +506,7 @@ static int cp_decode_response(struct osdp_pd *pd, uint8_t *buf, int len)
 		for (i = 0; i < 16; i++) {
 			pd->sc.pd_cryptogram[i] = buf[pos++];
 		}
-		osdp_compute_session_keys(TO_CTX(pd));
+		osdp_compute_session_keys(pd);
 		if (osdp_verify_pd_cryptogram(pd) != 0) {
 			LOG_ERR("Failed to verify PD cryptogram");
 			return OSDP_CP_ERR_GENERIC;
@@ -518,7 +518,7 @@ static int cp_decode_response(struct osdp_pd *pd, uint8_t *buf, int len)
 		for (i = 0; i < 16; i++) {
 			pd->sc.r_mac[i] = buf[pos++];
 		}
-		SET_FLAG(pd, PD_FLAG_SC_ACTIVE);
+		sc_activate(pd);
 		ret = OSDP_CP_ERR_NONE;
 		break;
 #endif /* CONFIG_OSDP_SC_ENABLED */
@@ -630,7 +630,7 @@ static void cp_flush_command_queue(struct osdp_pd *pd)
 
 static inline void cp_set_offline(struct osdp_pd *pd)
 {
-	CLEAR_FLAG(pd, PD_FLAG_SC_ACTIVE);
+	sc_deactivate(pd);
 	pd->state = OSDP_CP_STATE_OFFLINE;
 	pd->tstamp = osdp_millis_now();
 }
@@ -775,9 +775,7 @@ static int state_update(struct osdp_pd *pd)
 	switch (pd->state) {
 	case OSDP_CP_STATE_ONLINE:
 #ifdef CONFIG_OSDP_SC_ENABLED
-		if (ISSET_FLAG(pd, PD_FLAG_SC_ACTIVE) == false &&
-		    ISSET_FLAG(pd, PD_FLAG_SC_CAPABLE) == true &&
-		    osdp_millis_since(pd->sc_tstamp) > OSDP_PD_SC_RETRY_MS) {
+		if (cp_sc_should_retry(pd)) {
 			LOG_INF("Retry SC after retry timeout");
 			cp_set_state(pd, OSDP_CP_STATE_SC_INIT);
 			break;
@@ -819,8 +817,7 @@ static int state_update(struct osdp_pd *pd)
 			cp_set_offline(pd);
 		}
 #ifdef CONFIG_OSDP_SC_ENABLED
-		if (ISSET_FLAG(pd, PD_FLAG_SC_CAPABLE)) {
-			CLEAR_FLAG(pd, PD_FLAG_SC_SCBKD_DONE);
+		if (sc_is_capable(pd)) {
 			CLEAR_FLAG(pd, PD_FLAG_SC_USE_SCBKD);
 			cp_set_state(pd, OSDP_CP_STATE_SC_INIT);
 			break;
@@ -916,7 +913,7 @@ static int osdp_cp_send_command_keyset(struct osdp_cmd_keyset *cmd)
 	}
 
 	for (i = 0; i < NUM_PD(ctx); i++) {
-		pd = TO_PD(ctx, i);
+		pd = osdp_to_pd(ctx, i);
 		p = cp_cmd_alloc(pd);
 		if (p == NULL) {
 			return -1;
@@ -975,7 +972,7 @@ int osdp_cp_send_command(int pd, struct osdp_cmd *cmd)
 		LOG_ERR("Invalid PD number");
 		return -1;
 	}
-	if (TO_PD(ctx, pd)->state != OSDP_CP_STATE_ONLINE) {
+	if (osdp_to_pd(ctx, pd)->state != OSDP_CP_STATE_ONLINE) {
 		LOG_WRN("PD not online");
 		return -1;
 	}
@@ -1005,12 +1002,12 @@ int osdp_cp_send_command(int pd, struct osdp_cmd *cmd)
 		return -1;
 	}
 
-	p = cp_cmd_alloc(TO_PD(ctx, pd));
+	p = cp_cmd_alloc(osdp_to_pd(ctx, pd));
 	if (p == NULL) {
 		return -1;
 	}
 	memcpy(p, cmd, sizeof(struct osdp_cmd));
 	p->id = cmd_id; /* translate to internal */
-	cp_cmd_enqueue(TO_PD(ctx, pd), p);
+	cp_cmd_enqueue(osdp_to_pd(ctx, pd), p);
 	return 0;
 }

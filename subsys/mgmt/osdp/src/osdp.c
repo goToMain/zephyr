@@ -147,10 +147,10 @@ static struct osdp *osdp_build_ctx(struct osdp_channel *channel)
 	SET_CURRENT_PD(ctx, 0);
 
 	for (i = 0; i < CONFIG_OSDP_NUM_CONNECTED_PD; i++) {
-		pd = TO_PD(ctx, i);
+		pd = osdp_to_pd(ctx, i);
 		pd->idx = i;
 		pd->seq_number = -1;
-		pd->__parent = ctx;
+		pd->osdp_ctx = ctx;
 		pd->address = pd_adddres[i];
 		pd->baud_rate = CONFIG_OSDP_UART_BAUD_RATE;
 		memcpy(&pd->channel, channel, sizeof(struct osdp_channel));
