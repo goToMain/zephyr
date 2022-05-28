@@ -172,7 +172,7 @@ static int pd_translate_event(struct osdp_pd *pd, struct osdp_event *event)
 		/* POLL command cannot fail even when there are errors here */
 		return REPLY_ACK;
 	}
-	memcpy(pd->cmd_data, event, sizeof(struct osdp_event));
+	memcpy(pd->ephemeral_data, event, sizeof(struct osdp_event));
 	return reply_code;
 }
 
@@ -251,7 +251,7 @@ static int pd_decode_command(struct osdp_pd *pd, uint8_t *buf, int len)
 		ret = pd->command_callback(pd->command_callback_arg, &cmd);
 		if (ret != 0) {
 			pd->reply_id = REPLY_NAK;
-			pd->cmd_data[0] = OSDP_PD_NAK_RECORD;
+			pd->ephemeral_data[0] = OSDP_PD_NAK_RECORD;
 			ret = OSDP_PD_ERR_REPLY;
 			break;
 		}
@@ -283,7 +283,7 @@ static int pd_decode_command(struct osdp_pd *pd, uint8_t *buf, int len)
 		ret = pd->command_callback(pd->command_callback_arg, &cmd);
 		if (ret != 0) {
 			pd->reply_id = REPLY_NAK;
-			pd->cmd_data[0] = OSDP_PD_NAK_RECORD;
+			pd->ephemeral_data[0] = OSDP_PD_NAK_RECORD;
 			ret = OSDP_PD_ERR_REPLY;
 			break;
 		}
@@ -304,7 +304,7 @@ static int pd_decode_command(struct osdp_pd *pd, uint8_t *buf, int len)
 		ret = pd->command_callback(pd->command_callback_arg, &cmd);
 		if (ret != 0) {
 			pd->reply_id = REPLY_NAK;
-			pd->cmd_data[0] = OSDP_PD_NAK_RECORD;
+			pd->ephemeral_data[0] = OSDP_PD_NAK_RECORD;
 			ret = OSDP_PD_ERR_REPLY;
 			break;
 		}
@@ -333,7 +333,7 @@ static int pd_decode_command(struct osdp_pd *pd, uint8_t *buf, int len)
 		ret = pd->command_callback(pd->command_callback_arg, &cmd);
 		if (ret != 0) {
 			pd->reply_id = REPLY_NAK;
-			pd->cmd_data[0] = OSDP_PD_NAK_RECORD;
+			pd->ephemeral_data[0] = OSDP_PD_NAK_RECORD;
 			ret = OSDP_PD_ERR_REPLY;
 			break;
 		}
@@ -364,11 +364,11 @@ static int pd_decode_command(struct osdp_pd *pd, uint8_t *buf, int len)
 		ret = pd->command_callback(pd->command_callback_arg, &cmd);
 		if (ret != 0) {
 			pd->reply_id = REPLY_NAK;
-			pd->cmd_data[0] = OSDP_PD_NAK_RECORD;
+			pd->ephemeral_data[0] = OSDP_PD_NAK_RECORD;
 			ret = OSDP_PD_ERR_REPLY;
 			break;
 		}
-		memcpy(pd->cmd_data, &cmd, sizeof(struct osdp_cmd));
+		memcpy(pd->ephemeral_data, &cmd, sizeof(struct osdp_cmd));
 		pd->reply_id = REPLY_COM;
 		ret = OSDP_PD_ERR_NONE;
 		break;
@@ -381,7 +381,7 @@ static int pd_decode_command(struct osdp_pd *pd, uint8_t *buf, int len)
 		 */
 		if (ISSET_FLAG(pd, PD_FLAG_SC_ACTIVE) == 0) {
 			pd->reply_id = REPLY_NAK;
-			pd->cmd_data[0] = OSDP_PD_NAK_SC_COND;
+			pd->ephemeral_data[0] = OSDP_PD_NAK_SC_COND;
 			LOG_ERR("Keyset with SC inactive");
 			break;
 		}
@@ -423,7 +423,7 @@ static int pd_decode_command(struct osdp_pd *pd, uint8_t *buf, int len)
 		int tmp = OSDP_PD_CAP_COMMUNICATION_SECURITY;
 		if (pd->cap[tmp].compliance_level == 0) {
 			pd->reply_id = REPLY_NAK;
-			pd->cmd_data[0] = OSDP_PD_NAK_SC_UNSUP;
+			pd->ephemeral_data[0] = OSDP_PD_NAK_SC_UNSUP;
 			break;
 		}
 		if (len != CMD_CHLNG_DATA_LEN) {
@@ -450,7 +450,7 @@ static int pd_decode_command(struct osdp_pd *pd, uint8_t *buf, int len)
 	default:
 		LOG_ERR("Unknown CMD(%02x)", pd->cmd_id);
 		pd->reply_id = REPLY_NAK;
-		pd->cmd_data[0] = OSDP_PD_NAK_CMD_UNKNOWN;
+		pd->ephemeral_data[0] = OSDP_PD_NAK_CMD_UNKNOWN;
 		ret = OSDP_PD_ERR_NONE;
 		break;
 	}
@@ -459,7 +459,7 @@ static int pd_decode_command(struct osdp_pd *pd, uint8_t *buf, int len)
 		LOG_ERR("Invalid command structure. CMD: %02x, Len: %d",
 			pd->cmd_id, len);
 		pd->reply_id = REPLY_NAK;
-		pd->cmd_data[0] = OSDP_PD_NAK_CMD_LEN;
+		pd->ephemeral_data[0] = OSDP_PD_NAK_CMD_LEN;
 	}
 
 	if (pd->cmd_id != CMD_POLL) {
@@ -563,7 +563,7 @@ static int pd_build_reply(struct osdp_pd *pd, uint8_t *buf, int max_len)
 		 * TODO: Persist pd->address and pd->baud_rate via
 		 * subsys/settings
 		 */
-		cmd = (struct osdp_cmd *)pd->cmd_data;
+		cmd = (struct osdp_cmd *)pd->ephemeral_data;
 		buf[len++] = pd->reply_id;
 		buf[len++] = cmd->comset.address;
 		buf[len++] = BYTE_0(cmd->comset.baud_rate);
@@ -580,7 +580,7 @@ static int pd_build_reply(struct osdp_pd *pd, uint8_t *buf, int max_len)
 	case REPLY_NAK:
 		ASSERT_BUF_LEN(REPLY_NAK_LEN);
 		buf[len++] = pd->reply_id;
-		buf[len++] = pd->cmd_data[0];
+		buf[len++] = pd->ephemeral_data[0];
 		ret = OSDP_PD_ERR_NONE;
 		break;
 #ifdef CONFIG_OSDP_SC_ENABLED
@@ -731,7 +731,7 @@ static int pd_receve_packet(struct osdp_pd *pd)
 	}
 
 	pd->reply_id = 0;    /* reset past reply ID so phy can send NAK */
-	pd->cmd_data[0] = 0; /* reset past NAK reason */
+	pd->ephemeral_data[0] = 0; /* reset past NAK reason */
 	ret = osdp_phy_decode_packet(pd, pd->rx_buf, pd->rx_buf_len);
 	if (ret == OSDP_ERR_PKT_FMT) {
 		if (pd->reply_id != 0) {

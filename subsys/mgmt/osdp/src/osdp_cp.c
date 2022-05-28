@@ -182,7 +182,7 @@ static int cp_build_command(struct osdp_pd *pd, uint8_t *buf, int max_len)
 		break;
 	case CMD_OUT:
 		ASSERT_BUF_LEN(CMD_OUT_LEN);
-		cmd = (struct osdp_cmd *)pd->cmd_data;
+		cmd = (struct osdp_cmd *)pd->ephemeral_data;
 		buf[len++] = pd->cmd_id;
 		buf[len++] = cmd->output.output_no;
 		buf[len++] = cmd->output.control_code;
@@ -192,7 +192,7 @@ static int cp_build_command(struct osdp_pd *pd, uint8_t *buf, int max_len)
 		break;
 	case CMD_LED:
 		ASSERT_BUF_LEN(CMD_LED_LEN);
-		cmd = (struct osdp_cmd *)pd->cmd_data;
+		cmd = (struct osdp_cmd *)pd->ephemeral_data;
 		buf[len++] = pd->cmd_id;
 		buf[len++] = cmd->led.reader;
 		buf[len++] = cmd->led.led_number;
@@ -214,7 +214,7 @@ static int cp_build_command(struct osdp_pd *pd, uint8_t *buf, int max_len)
 		break;
 	case CMD_BUZ:
 		ASSERT_BUF_LEN(CMD_BUZ_LEN);
-		cmd = (struct osdp_cmd *)pd->cmd_data;
+		cmd = (struct osdp_cmd *)pd->ephemeral_data;
 		buf[len++] = pd->cmd_id;
 		buf[len++] = cmd->buzzer.reader;
 		buf[len++] = cmd->buzzer.control_code;
@@ -224,7 +224,7 @@ static int cp_build_command(struct osdp_pd *pd, uint8_t *buf, int max_len)
 		ret = 0;
 		break;
 	case CMD_TEXT:
-		cmd = (struct osdp_cmd *)pd->cmd_data;
+		cmd = (struct osdp_cmd *)pd->ephemeral_data;
 		ASSERT_BUF_LEN(CMD_TEXT_LEN + cmd->text.length);
 		buf[len++] = pd->cmd_id;
 		buf[len++] = cmd->text.reader;
@@ -240,7 +240,7 @@ static int cp_build_command(struct osdp_pd *pd, uint8_t *buf, int max_len)
 		break;
 	case CMD_COMSET:
 		ASSERT_BUF_LEN(CMD_COMSET_LEN);
-		cmd = (struct osdp_cmd *)pd->cmd_data;
+		cmd = (struct osdp_cmd *)pd->ephemeral_data;
 		buf[len++] = pd->cmd_id;
 		buf[len++] = cmd->comset.address;
 		buf[len++] = BYTE_0(cmd->comset.baud_rate);
@@ -673,7 +673,7 @@ static int cp_phy_state_update(struct osdp_pd *pd)
 			break;
 		}
 		pd->cmd_id = cmd->id;
-		memcpy(pd->cmd_data, cmd, sizeof(struct osdp_cmd));
+		memcpy(pd->ephemeral_data, cmd, sizeof(struct osdp_cmd));
 		cp_cmd_free(pd, cmd);
 		/* fall-thru */
 	case OSDP_CP_PHY_STATE_SEND_CMD:
