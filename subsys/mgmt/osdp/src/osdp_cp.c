@@ -443,7 +443,7 @@ static int cp_decode_response(struct osdp_pd *pd, uint8_t *buf, int len)
 		for (i = 0; i < event.keypress.length; i++) {
 			event.keypress.data[i] = buf[pos + i];
 		}
-		ctx->event_callback(ctx->event_callback_arg, pd->offset, &event);
+		ctx->event_callback(ctx->event_callback_arg, pd->idx, &event);
 		ret = OSDP_CP_ERR_NONE;
 		break;
 	case REPLY_RAW:
@@ -465,7 +465,7 @@ static int cp_decode_response(struct osdp_pd *pd, uint8_t *buf, int len)
 			event.cardread.data[i] = buf[pos + i];
 		}
 		ctx->event_callback(ctx->event_callback_arg,
-				    pd->offset, &event);
+				    pd->idx, &event);
 		ret = OSDP_CP_ERR_NONE;
 		break;
 	case REPLY_FMT:
@@ -486,7 +486,7 @@ static int cp_decode_response(struct osdp_pd *pd, uint8_t *buf, int len)
 			event.cardread.data[i] = buf[pos + i];
 		}
 		ctx->event_callback(ctx->event_callback_arg,
-				    pd->offset, &event);
+				    pd->idx, &event);
 		ret = OSDP_CP_ERR_NONE;
 		break;
 	case REPLY_BUSY:
