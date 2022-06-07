@@ -500,28 +500,16 @@ static int pd_decode_command(struct osdp_pd *pd, uint8_t *buf, int len)
 		memcpy(pd->sc.scbk, cmd.keyset.data, 16);
 		CLEAR_FLAG(pd, PD_FLAG_SC_USE_SCBKD);
 		CLEAR_FLAG(pd, PD_FLAG_INSTALL_MODE);
+		sc_deactivate(pd);
 		pd->reply_id = REPLY_ACK;
 		ret = OSDP_PD_ERR_NONE;
 		break;
 	case CMD_CHLNG:
 		PD_CMD_CAP_CHECK(pd, NULL);
 		ASSERT_LENGTH(len, CMD_CHLNG_DATA_LEN);
-		/* Workaround for error: a label can only be part of a
-		 * statement and a declaration is not a statement */
-		;
-		int tmp = OSDP_PD_CAP_COMMUNICATION_SECURITY;
-		if (pd->cap[tmp].compliance_level == 0) {
-			pd->reply_id = REPLY_NAK;
-			pd->ephemeral_data[0] = OSDP_PD_NAK_SC_UNSUP;
-			break;
-		}
-		if (len != CMD_CHLNG_DATA_LEN) {
-			LOG_ERR("CMD_CHLNG length mismatch! %d/8", len);
-			break;
-		}
-		osdp_sc_init(pd);
 		sc_deactivate(pd);
-		for (i = 0; i < 8; i++) {
+		osdp_sc_setup(pd);
+		for (i = 0; i < CMD_CHLNG_DATA_LEN; i++) {
 			pd->sc.cp_random[i] = buf[pos++];
 		}
 		pd->reply_id = REPLY_CCRYPT;
@@ -530,7 +518,7 @@ static int pd_decode_command(struct osdp_pd *pd, uint8_t *buf, int len)
 	case CMD_SCRYPT:
 		PD_CMD_CAP_CHECK(pd, NULL);
 		ASSERT_LENGTH(len, CMD_SCRYPT_DATA_LEN);
-		for (i = 0; i < 16; i++) {
+		for (i = 0; i < CMD_SCRYPT_DATA_LEN; i++) {
 			pd->sc.cp_cryptogram[i] = buf[pos++];
 		}
 		pd->reply_id = REPLY_RMAC_I;
@@ -751,6 +739,7 @@ static int pd_build_reply(struct osdp_pd *pd, uint8_t *buf, int max_len)
 		if (osdp_verify_cp_cryptogram(pd) == 0) {
 			smb[2] = 1;  /* CP auth succeeded */
 			sc_activate(pd);
+			pd->sc_tstamp = osdp_millis_now();
 			if (ISSET_FLAG(pd, PD_FLAG_SC_USE_SCBKD)) {
 				LOG_WRN("SC Active with SCBK-D");
 			} else {
