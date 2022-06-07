@@ -545,11 +545,12 @@ static int pd_decode_command(struct osdp_pd *pd, uint8_t *buf, int len)
 		break;
 	}
 
-	if (ret != 0) {
-		LOG_ERR("Invalid command structure. CMD: %02x, Len: %d",
-			pd->cmd_id, len);
+	if (ret != 0 && ret != OSDP_PD_ERR_REPLY) {
+		LOG_ERR("Invalid command structure. CMD: %02x, Len: %d ret: %d",
+			pd->cmd_id, len, ret);
 		pd->reply_id = REPLY_NAK;
 		pd->ephemeral_data[0] = OSDP_PD_NAK_CMD_LEN;
+		return OSDP_PD_ERR_REPLY;
 	}
 
 	if (pd->cmd_id != CMD_POLL) {
@@ -566,12 +567,11 @@ static int pd_decode_command(struct osdp_pd *pd, uint8_t *buf, int len)
  */
 static int pd_build_reply(struct osdp_pd *pd, uint8_t *buf, int max_len)
 {
-	int i, data_off, len = 0, ret = -1;
+	int i, len = 0, ret = -1;
 	uint8_t t1;
 	struct osdp_cmd *cmd;
 	struct osdp_event *event;
-
-	data_off = osdp_phy_packet_get_data_offset(pd, buf);
+	int data_off = osdp_phy_packet_get_data_offset(pd, buf);
 #ifdef CONFIG_OSDP_SC_ENABLED
 	uint8_t *smb = osdp_phy_packet_get_smb(pd, buf);
 #endif
