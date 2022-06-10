@@ -1220,8 +1220,8 @@ MCU Manager:
         - "area: mcumgr"
 
 OSDP:
-    status: odd fixes
-    collaborators:
+    status: maintained
+    maintainers:
         - sidcha
     files:
         - subsys/mgmt/osdp/
